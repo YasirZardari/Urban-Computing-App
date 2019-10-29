@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "957440268948",
+    "firebase_url": "https://urbansensorapp.firebaseio.com",
+    "project_id": "urbansensorapp",
+    "storage_bucket": "urbansensorapp.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:957440268948:android:8002c2149e7102399db281",
+        "android_client_info": {
+          "package_name": "com.example.urbansensorapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "957440268948-l1p6voacm0m19dtjskia3a6icipnm6se.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.urbansensorapp",
+            "certificate_hash": "7d0fbde465bd61dabbd7d467c7933991f63a6825"
+          }
+        },
+        {
+          "client_id": "957440268948-hic8rbn53lvgs07vqaf812r4flajqo7i.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAA8THa9dvFntYj8k-HHE-QkqE0hAfwGug"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "957440268948-hic8rbn53lvgs07vqaf812r4flajqo7i.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
