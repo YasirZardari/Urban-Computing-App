@@ -20,6 +20,8 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+
+import java.net.URL;
 import java.util.Calendar;
 
 import com.example.urbansensorapp.R;
@@ -29,9 +31,14 @@ import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 
+import org.w3c.dom.Document;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.util.List;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -49,7 +56,11 @@ public class MainActivity extends AppCompatActivity {
 
     private String latitude;
     private String longitude;
+    private String[] timeArray;
 
+    private String startTime;
+
+    private String stationURL = "http://api.irishrail.ie/realtime/realtime.asmx/getStationDataByCodeXML?StationCode=perse&NumMins=30";
 
     private Button startButton;
     private TextView resultTextView;
@@ -57,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView longitudeTextView;
     private Button stopButton;
 
-    DatabaseReference reff;
+    DatabaseReference reffAirPressure;
 
 
     // Sensor listener. Any change to current pressure triggers this method which
@@ -110,7 +121,8 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        reff = FirebaseDatabase.getInstance().getReference("Sensor Data");
+
+        reffAirPressure = FirebaseDatabase.getInstance().getReference("Sensor Data/Air Pressure By GPS");
         // Check permission for location access.
         if (ActivityCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
 
@@ -177,7 +189,7 @@ public class MainActivity extends AppCompatActivity {
         startButton.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
-
+                startTime = (Calendar.getInstance().getTime().toString());
                 startService(new Intent(MainActivity.this,MyService.class));
                 //reff.child(Calendar.getInstance().getTime().toString());
                 start();
@@ -215,14 +227,18 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void run() {
 
+
+
+            timeArray = Calendar.getInstance().getTime().toString().trim().split("\\s+");
+            new StationInfo().execute(stationURL);
+
             // Update text views with current air pressure and GPS values
             resultTextView.setText(String.format("%.2f mbar", pressureVal));
             latitudeTextView.setText(latitude);
             longitudeTextView.setText(longitude);
-            reff.child((Calendar.getInstance().getTime().toString())).child("Air Pressure").setValue(pressureVal);
-            reff.child((Calendar.getInstance().getTime().toString())).child("Latitude").setValue(latitude);
-            reff.child((Calendar.getInstance().getTime().toString())).child("Longitude").setValue(longitude);
-
+            reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Air Pressure").setValue(pressureVal);
+            reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Latitude").setValue(latitude);
+            reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Longitude").setValue(longitude);
 
             // Write to CSV file
             try{
@@ -251,5 +267,57 @@ public class MainActivity extends AppCompatActivity {
         started = true;
         handler.postDelayed(runnable, 1000);
     }
+
+
+    private class StationInfo extends AsyncTask<String, Integer, String> {
+
+//        // Runs in UI before background thread is called
+//        @Override
+//        protected void onPreExecute() {
+//            super.onPreExecute();
+//
+//            // Do something like display a progress bar
+//        }
+
+        // This is run in a background thread
+        @Override
+        protected String doInBackground(String... url) {
+
+            try {
+
+                DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+                DocumentBuilder db = dbf.newDocumentBuilder();
+                Document doc = db.parse(new URL(url[0]).openStream());
+                doc.getDocumentElement().normalize();
+                //System.out.println("Root element :" + doc.getDocumentElement().getNodeName());
+                Log.d("urltaggy", "Root element :" + doc.getDocumentElement().getNodeName());
+
+
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            return "this string is passed to onPostExecute";
+        }
+
+        // This is called from background thread but runs in UI
+        @Override
+        protected void onProgressUpdate(Integer... values) {
+            super.onProgressUpdate(values);
+
+            // Do things like update the progress bar
+        }
+
+        // This runs in UI when background thread finishes
+        @Override
+        protected void onPostExecute(String result) {
+            super.onPostExecute(result);
+
+            // Do things like hide the progress bar or change a TextView
+        }
+    }
+
+
 }
 
