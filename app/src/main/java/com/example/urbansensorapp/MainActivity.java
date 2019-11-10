@@ -32,9 +32,14 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 
 import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.w3c.dom.Element;
+
 
 import java.io.File;
 import java.io.FileWriter;
+import java.util.HashMap;
 import java.util.List;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -56,11 +61,14 @@ public class MainActivity extends AppCompatActivity {
 
     private String latitude;
     private String longitude;
-    private String[] timeArray;
+    private String[] ListofStations;
 
     private String startTime;
 
+    // Open data sources
     private String stationURL = "http://api.irishrail.ie/realtime/realtime.asmx/getStationDataByCodeXML?StationCode=perse&NumMins=30";
+    private String stationList = "http://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML";
+    private String currentTrainsURL = "http://api.irishrail.ie/realtime/realtime.asmx/getCurrentTrainsXML";
 
     private Button startButton;
     private TextView resultTextView;
@@ -68,7 +76,12 @@ public class MainActivity extends AppCompatActivity {
     private TextView longitudeTextView;
     private Button stopButton;
 
+    // References to Firebase Cloud
     DatabaseReference reffAirPressure;
+    DatabaseReference reffStationData;
+    DatabaseReference reffCurrentTrainsData;
+
+
 
 
     // Sensor listener. Any change to current pressure triggers this method which
@@ -123,6 +136,10 @@ public class MainActivity extends AppCompatActivity {
 
 
         reffAirPressure = FirebaseDatabase.getInstance().getReference("Sensor Data/Air Pressure By GPS");
+        reffStationData = FirebaseDatabase.getInstance().getReference("Open Data/Stations Within 10km of GPS");
+        reffCurrentTrainsData = FirebaseDatabase.getInstance().getReference("Open Data/Current Trains Running");
+
+
         // Check permission for location access.
         if (ActivityCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
 
@@ -190,8 +207,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view){
                 startTime = (Calendar.getInstance().getTime().toString());
+
+                // Run service which allows the app to run in background
                 startService(new Intent(MainActivity.this,MyService.class));
-                //reff.child(Calendar.getInstance().getTime().toString());
+
+                // Run async class which runs code getting info from open data source
+                new StationInfo().execute(stationURL, stationList, currentTrainsURL);
                 start();
             }
         });
@@ -227,15 +248,13 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void run() {
 
-
-
-            timeArray = Calendar.getInstance().getTime().toString().trim().split("\\s+");
-            new StationInfo().execute(stationURL);
-
             // Update text views with current air pressure and GPS values
             resultTextView.setText(String.format("%.2f mbar", pressureVal));
             latitudeTextView.setText(latitude);
             longitudeTextView.setText(longitude);
+
+            // Here I am pushing my data to the firebase realtime database. It stores the data every second, with
+            // the current time used as the data's parent node.
             reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Air Pressure").setValue(pressureVal);
             reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Latitude").setValue(latitude);
             reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Longitude").setValue(longitude);
@@ -269,15 +288,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    // I used this example on how to create an sync class, which is required to do any network
+    // functions, like reading the xml from Irish Rail's website
+    // https://stackoverflow.com/questions/25647881/android-asynctask-example-and-explanation
     private class StationInfo extends AsyncTask<String, Integer, String> {
-
-//        // Runs in UI before background thread is called
-//        @Override
-//        protected void onPreExecute() {
-//            super.onPreExecute();
-//
-//            // Do something like display a progress bar
-//        }
 
         // This is run in a background thread
         @Override
@@ -285,13 +299,87 @@ public class MainActivity extends AppCompatActivity {
 
             try {
 
+                // Reading XML from Irish rail real time url
+                // Source for XML/Dom instructions: https://howtodoinjava.com/xml/read-xml-dom-parser-example/
                 DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
                 DocumentBuilder db = dbf.newDocumentBuilder();
-                Document doc = db.parse(new URL(url[0]).openStream());
-                doc.getDocumentElement().normalize();
-                //System.out.println("Root element :" + doc.getDocumentElement().getNodeName());
-                Log.d("urltaggy", "Root element :" + doc.getDocumentElement().getNodeName());
+                Document getAllStationsdoc = db.parse(new URL(url[1]).openStream());
+                Document getCurrentTrains = db.parse(new URL(url[2]).openStream());
 
+                getAllStationsdoc.getDocumentElement().normalize();
+                getCurrentTrains.getDocumentElement().normalize();
+
+                NodeList nList = getAllStationsdoc.getElementsByTagName("objStation");
+                NodeList currentTrainsList = getCurrentTrains.getElementsByTagName("objTrainPositions");
+
+
+                ListofStations = new String[nList.getLength()];
+
+                // Getting all station objects
+                int count = 1;
+                for(int i = 0; i < nList.getLength(); i++){
+
+                    Node node = nList.item(i);
+
+                    if (node.getNodeType() == Node.ELEMENT_NODE)
+                    {
+                        Element eElement = (Element) node;
+                        double stationLatitude = Double.parseDouble(eElement.getElementsByTagName("StationLatitude").item(0).getTextContent());
+                        double stationLongitude = Double.parseDouble(eElement.getElementsByTagName("StationLongitude").item(0).getTextContent());
+
+                        float[] results = new float[1];
+
+                        double currLat = Double.parseDouble(latitude);
+                        double currLon = Double.parseDouble(longitude);
+
+                        // Get distance between two points
+                        Location.distanceBetween(currLat, currLon, stationLatitude, stationLongitude, results);
+                        float distanceInMeters = results[0];
+
+                        // If the current position is within 10km of a train station, record that
+                        // station into the firebase database cloud.
+                        if (distanceInMeters < 10000){
+                            ListofStations[i] = eElement.getElementsByTagName("StationDesc").item(0).getTextContent();
+                            Log.d("urltaggy","Train : "  + eElement.getElementsByTagName("StationDesc").item(0).getTextContent());
+
+                            String child = latitude + " " + longitude;
+                            child = child.replace('.',',');
+                            reffStationData.child(child).child("Station " + String.valueOf(count)).setValue(ListofStations[i]);
+                            count++;
+                        }
+
+                    }
+
+                }
+                reffCurrentTrainsData.removeValue();
+                for(int i = 0; i < currentTrainsList.getLength(); i++){
+                    Node node = currentTrainsList.item(i);
+                    Element eElement = (Element) node;
+
+                    String trainStatus = eElement.getElementsByTagName("TrainStatus").item(0).getTextContent();
+                    String trainLatitude = eElement.getElementsByTagName("TrainLatitude").item(0).getTextContent();
+                    String trainLogitude = eElement.getElementsByTagName("TrainLongitude").item(0).getTextContent();
+                    String trainCode = eElement.getElementsByTagName("TrainCode").item(0).getTextContent();
+                    String trainDate = eElement.getElementsByTagName("TrainDate").item(0).getTextContent();
+                    String publicMessage = eElement.getElementsByTagName("PublicMessage").item(0).getTextContent();
+                    String direction = eElement.getElementsByTagName("Direction").item(0).getTextContent();
+
+                    HashMap<String,String> trainData = new HashMap<>();
+
+                    trainData.put("Train Status",trainStatus);
+                    trainData.put("Train Latitude",trainLatitude);
+                    trainData.put("Train Longitude",trainLogitude);
+                    trainData.put("Train Code",trainCode);
+                    trainData.put("Train Data",trainDate);
+                    trainData.put("Public Message",publicMessage);
+                    trainData.put("Direction", direction);
+
+                    reffCurrentTrainsData.push().setValue(trainData);
+
+
+
+
+                }
 
             }
             catch (Exception e) {
