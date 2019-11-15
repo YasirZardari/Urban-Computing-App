@@ -21,15 +21,22 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
-import java.net.URL;
-import java.util.Calendar;
 
-import com.example.urbansensorapp.R;
+import java.math.RoundingMode;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.math.BigDecimal;
+
+
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
@@ -41,6 +48,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -76,6 +84,15 @@ public class MainActivity extends AppCompatActivity {
     private TextView longitudeTextView;
     private Button stopButton;
 
+    // Train Data from Cloud
+    private ArrayList<String> stationCodes = new ArrayList<>();
+    private ArrayList<String> stationNames = new ArrayList<>();
+    private ArrayList<String> stationLatitudes = new ArrayList<>();
+    private ArrayList<String> stationLongitudes = new ArrayList<>();
+
+    private HashMap<String,String> airPressureTable= new HashMap<String,String>();
+
+
     // References to Firebase Cloud
     DatabaseReference reffAirPressure;
     DatabaseReference reffStationData;
@@ -105,8 +122,8 @@ public class MainActivity extends AppCompatActivity {
     LocationListener locationListener = new LocationListener() {
         @Override
         public void onLocationChanged(Location location) {
-            longitude = Double.toString(location.getLongitude());
-            latitude = Double.toString(location.getLatitude());
+            longitude = new BigDecimal(location.getLongitude()).setScale(3, RoundingMode.HALF_EVEN).toString();
+            latitude = new BigDecimal(location.getLatitude()).setScale(3, RoundingMode.HALF_EVEN).toString();
             Log.d("latitude", latitude);
 
         }
@@ -127,7 +144,85 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    private void DataFusion(){
 
+        stationCodes = new ArrayList<>();
+        stationNames = new ArrayList<>();
+        stationLatitudes = new ArrayList<>();
+        stationLongitudes = new ArrayList<>();
+
+        Log.d("stretch", "1");
+        DatabaseReference getStationsRef = FirebaseDatabase.getInstance().getReference().child("Open Data").child("List of Stations");
+
+        Log.d("stretch", "2");
+
+        //Get datasnapshot at your "users" root node
+        getStationsRef.addListenerForSingleValueEvent(
+                new ValueEventListener() {
+                    @Override
+                    public void onDataChange(DataSnapshot dataSnapshot) {
+                        //Get map of users in datasnapshot
+                        collectCurrentStations((Map<String,Object>) dataSnapshot.getValue());
+                    }
+
+                    @Override
+                    public void onCancelled(DatabaseError databaseError) {
+                        //handle databaseError
+                    }
+                });
+
+    }
+
+    private void collectCurrentStations(Map<String,Object> trains) {
+
+        //iterate through each user, ignoring their UID
+        for (Map.Entry<String, Object> entry : trains.entrySet()){
+
+            //Get user map
+            Map singleTrain = (Map) entry.getValue();
+
+            Double currentStationLat = Double.valueOf((String) singleTrain.get("Station Latitude"));
+            Double currentStaionLog = Double.valueOf((String) singleTrain.get("Station Longitude"));
+
+            float[] results = new float[1];
+
+            double currLat = Double.parseDouble(latitude);
+            double currLon = Double.parseDouble(longitude);
+
+            // Get distance between two points
+            Location.distanceBetween(currLat, currLon, currentStationLat, currentStaionLog, results);
+            float distanceInMeters = results[0];
+
+
+            if (distanceInMeters < 10000) {
+                stationCodes.add((String) singleTrain.get("Station Code"));
+                stationNames.add((String) singleTrain.get("Station Name"));
+                stationLatitudes.add((String) singleTrain.get("Station Latitude"));
+                stationLongitudes.add((String) singleTrain.get("Station Longitude"));
+            }
+        }
+
+        System.out.println(stationNames.toString());
+        System.out.println(stationCodes.toString());
+        System.out.println(stationLatitudes.toString());
+        System.out.println(stationLongitudes.toString());
+    }
+
+    private void doit(Map<String,Object> airThings){
+        for (Map.Entry<String, Object> entry : airThings.entrySet()){
+
+            //Get user map
+            Map singleAir = (Map) entry.getValue();
+
+            float airPressure = (float) airThings.get("Air Pressure");
+            String logy = (String) airThings.get("Longitude");
+            String laty = (String) airThings.get("Latitude");
+
+            airPressureTable.put(logy+laty,String.valueOf(airPressure));
+
+        }
+
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -136,7 +231,7 @@ public class MainActivity extends AppCompatActivity {
 
 
         reffAirPressure = FirebaseDatabase.getInstance().getReference("Sensor Data/Air Pressure By GPS");
-        reffStationData = FirebaseDatabase.getInstance().getReference("Open Data/Stations Within 10km of GPS");
+        reffStationData = FirebaseDatabase.getInstance().getReference("Open Data/List of Stations");
         reffCurrentTrainsData = FirebaseDatabase.getInstance().getReference("Open Data/Current Trains Running");
 
 
@@ -161,8 +256,8 @@ public class MainActivity extends AppCompatActivity {
                     public void onSuccess(Location location) {
 
                         if (location != null) {
-                            longitude = Double.toString(location.getLongitude());
-                            latitude = Double.toString(location.getLatitude());
+                            longitude = new BigDecimal(location.getLongitude()).setScale(4, RoundingMode.HALF_EVEN).toString();
+                            latitude = new BigDecimal(location.getLatitude()).setScale(4, RoundingMode.HALF_EVEN).toString();
                         }
                     }
                 });
@@ -178,7 +273,6 @@ public class MainActivity extends AppCompatActivity {
 
         try{
             fw = new FileWriter(fileName);
-
 
             fw.append("AirPressure");
             fw.append(',');
@@ -198,6 +292,12 @@ public class MainActivity extends AppCompatActivity {
         latitudeTextView = findViewById((R.id.latitudeTextView));
         longitudeTextView = findViewById((R.id.longitudeTextView));
 
+        Button updateTrainButton = findViewById(R.id.UpdateTrainButton);
+        Button getTrainBtn = findViewById(R.id.GetTrainDataButton);
+        Button openMapButton = findViewById(R.id.OpenMapButton);
+
+
+
         stopButton = findViewById(R.id.stopButton);
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -211,8 +311,7 @@ public class MainActivity extends AppCompatActivity {
                 // Run service which allows the app to run in background
                 startService(new Intent(MainActivity.this,MyService.class));
 
-                // Run async class which runs code getting info from open data source
-                new StationInfo().execute(stationURL, stationList, currentTrainsURL);
+
                 start();
             }
         });
@@ -229,6 +328,35 @@ public class MainActivity extends AppCompatActivity {
 
             }
         });
+
+        updateTrainButton.setOnClickListener(new View.OnClickListener(){
+            @Override
+            public void onClick(View view){
+                // Run async class which runs code getting info from open data source
+                new StationInfo().execute(stationURL, stationList, currentTrainsURL);
+            }
+        });
+
+        getTrainBtn.setOnClickListener(new View.OnClickListener(){
+            @Override
+            public void onClick(View view){
+                DataFusion();
+                // Run async class which runs code getting info from open data source
+                //new StationInfo().execute(stationURL, stationList, currentTrainsURL);
+            }
+        });
+
+        openMapButton.setOnClickListener(new View.OnClickListener(){
+            @Override
+            public void onClick(View view){
+                Intent intent = new Intent(MainActivity.this, MapsScreen.class);
+                startActivity(intent);
+
+                // Run async class which runs code getting info from open data source
+                //new StationInfo().execute(stationURL, stationList, currentTrainsURL);
+            }
+        });
+
 
     }
     @Override
@@ -253,11 +381,14 @@ public class MainActivity extends AppCompatActivity {
             latitudeTextView.setText(latitude);
             longitudeTextView.setText(longitude);
 
+            String setLat = latitude.replace('.',',');
+            String setLog = longitude.replace('.',',');
+
             // Here I am pushing my data to the firebase realtime database. It stores the data every second, with
             // the current time used as the data's parent node.
-            reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Air Pressure").setValue(pressureVal);
-            reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Latitude").setValue(latitude);
-            reffAirPressure.child((Calendar.getInstance().getTime().toString())).child("Longitude").setValue(longitude);
+            reffAirPressure.child(setLat + "-" + setLog).child("Air Pressure").setValue(pressureVal);
+            reffAirPressure.child(setLat + "-" + setLog).child("Latitude").setValue(latitude);
+            reffAirPressure.child(setLat + "-" + setLog).child("Longitude").setValue(longitude);
 
             // Write to CSV file
             try{
@@ -284,7 +415,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void start() {
         started = true;
-        handler.postDelayed(runnable, 1000);
+        handler.postDelayed(runnable, 2000);
     }
 
 
@@ -309,46 +440,33 @@ public class MainActivity extends AppCompatActivity {
                 getAllStationsdoc.getDocumentElement().normalize();
                 getCurrentTrains.getDocumentElement().normalize();
 
-                NodeList nList = getAllStationsdoc.getElementsByTagName("objStation");
+                NodeList stationList = getAllStationsdoc.getElementsByTagName("objStation");
                 NodeList currentTrainsList = getCurrentTrains.getElementsByTagName("objTrainPositions");
 
 
-                ListofStations = new String[nList.getLength()];
+                //ListofStations = new String[nList.getLength()];
 
                 // Getting all station objects
                 int count = 1;
-                for(int i = 0; i < nList.getLength(); i++){
+                reffStationData.removeValue();
+                for(int i = 0; i < stationList.getLength(); i++){
 
-                    Node node = nList.item(i);
+                    Node node = stationList.item(i);
+                    Element eElement = (Element) node;
 
-                    if (node.getNodeType() == Node.ELEMENT_NODE)
-                    {
-                        Element eElement = (Element) node;
-                        double stationLatitude = Double.parseDouble(eElement.getElementsByTagName("StationLatitude").item(0).getTextContent());
-                        double stationLongitude = Double.parseDouble(eElement.getElementsByTagName("StationLongitude").item(0).getTextContent());
+                    String stationName = eElement.getElementsByTagName("StationDesc").item(0).getTextContent();
+                    String stationLatitude = eElement.getElementsByTagName("StationLatitude").item(0).getTextContent();
+                    String stationLongitude = eElement.getElementsByTagName("StationLongitude").item(0).getTextContent();
+                    String stationCode = eElement.getElementsByTagName("StationCode").item(0).getTextContent();
 
-                        float[] results = new float[1];
+                    HashMap<String,String> stationData = new HashMap<>();
 
-                        double currLat = Double.parseDouble(latitude);
-                        double currLon = Double.parseDouble(longitude);
+                    stationData.put("Station Name", stationName);
+                    stationData.put("Station Code", stationCode);
+                    stationData.put("Station Latitude", stationLatitude);
+                    stationData.put("Station Longitude", stationLongitude);
 
-                        // Get distance between two points
-                        Location.distanceBetween(currLat, currLon, stationLatitude, stationLongitude, results);
-                        float distanceInMeters = results[0];
-
-                        // If the current position is within 10km of a train station, record that
-                        // station into the firebase database cloud.
-                        if (distanceInMeters < 10000){
-                            ListofStations[i] = eElement.getElementsByTagName("StationDesc").item(0).getTextContent();
-                            Log.d("urltaggy","Train : "  + eElement.getElementsByTagName("StationDesc").item(0).getTextContent());
-
-                            String child = latitude + " " + longitude;
-                            child = child.replace('.',',');
-                            reffStationData.child(child).child("Station " + String.valueOf(count)).setValue(ListofStations[i]);
-                            count++;
-                        }
-
-                    }
+                    reffStationData.push().setValue(stationData);
 
                 }
                 reffCurrentTrainsData.removeValue();
@@ -364,6 +482,10 @@ public class MainActivity extends AppCompatActivity {
                     String publicMessage = eElement.getElementsByTagName("PublicMessage").item(0).getTextContent();
                     String direction = eElement.getElementsByTagName("Direction").item(0).getTextContent();
 
+
+                    trainLatitude = new BigDecimal(trainLatitude).setScale(3, RoundingMode.HALF_EVEN).toString();
+                    trainLogitude = new BigDecimal(trainLogitude).setScale(3, RoundingMode.HALF_EVEN).toString();
+
                     HashMap<String,String> trainData = new HashMap<>();
 
                     trainData.put("Train Status",trainStatus);
@@ -375,9 +497,6 @@ public class MainActivity extends AppCompatActivity {
                     trainData.put("Direction", direction);
 
                     reffCurrentTrainsData.push().setValue(trainData);
-
-
-
 
                 }
 
