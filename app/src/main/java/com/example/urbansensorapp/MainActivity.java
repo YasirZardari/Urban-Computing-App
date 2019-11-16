@@ -90,6 +90,7 @@ public class MainActivity extends AppCompatActivity {
     private ArrayList<String> stationLatitudes = new ArrayList<>();
     private ArrayList<String> stationLongitudes = new ArrayList<>();
 
+
     private HashMap<String,String> airPressureTable= new HashMap<String,String>();
 
 
@@ -194,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
             float distanceInMeters = results[0];
 
 
-            if (distanceInMeters < 10000) {
+            if (distanceInMeters < 30000) {
                 stationCodes.add((String) singleTrain.get("Station Code"));
                 stationNames.add((String) singleTrain.get("Station Name"));
                 stationLatitudes.add((String) singleTrain.get("Station Latitude"));
@@ -206,22 +207,6 @@ public class MainActivity extends AppCompatActivity {
         System.out.println(stationCodes.toString());
         System.out.println(stationLatitudes.toString());
         System.out.println(stationLongitudes.toString());
-    }
-
-    private void doit(Map<String,Object> airThings){
-        for (Map.Entry<String, Object> entry : airThings.entrySet()){
-
-            //Get user map
-            Map singleAir = (Map) entry.getValue();
-
-            float airPressure = (float) airThings.get("Air Pressure");
-            String logy = (String) airThings.get("Longitude");
-            String laty = (String) airThings.get("Latitude");
-
-            airPressureTable.put(logy+laty,String.valueOf(airPressure));
-
-        }
-
     }
 
     @Override
@@ -340,7 +325,7 @@ public class MainActivity extends AppCompatActivity {
         getTrainBtn.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
-                DataFusion();
+                //DataFusion();
                 // Run async class which runs code getting info from open data source
                 //new StationInfo().execute(stationURL, stationList, currentTrainsURL);
             }
@@ -349,8 +334,22 @@ public class MainActivity extends AppCompatActivity {
         openMapButton.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
-                Intent intent = new Intent(MainActivity.this, MapsScreen.class);
-                startActivity(intent);
+                DataFusion();
+                Handler handler = new Handler();
+                handler.postDelayed(new Runnable() {
+                    public void run() {
+                        // Actions to do after 5 seconds
+                        Intent intent = new Intent(MainActivity.this, MapsScreen.class);
+                        intent.putExtra("Current Latitude", latitude);
+                        intent.putExtra("Current Longitude", longitude);
+                        intent.putExtra("Station Names", stationNames);
+                        intent.putExtra("Station Codes", stationCodes);
+                        intent.putExtra("Station Latitudes", stationLatitudes);
+                        intent.putExtra("Station Longitudes", stationLongitudes);
+                        startActivity(intent);
+                    }
+                }, 3000);
+
 
                 // Run async class which runs code getting info from open data source
                 //new StationInfo().execute(stationURL, stationList, currentTrainsURL);
