@@ -14,6 +14,7 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.GoogleMap.OnMarkerClickListener;
 
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
@@ -24,6 +25,8 @@ import com.google.android.gms.maps.model.PolylineOptions;
 
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.Button;
+import android.widget.ScrollView;
 import android.widget.Toast;
 import android.graphics.Color;
 
@@ -36,16 +39,21 @@ import java.util.List;
 public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, OnMarkerClickListener {
 
     private GoogleMap mMap;
+    private ScrollView currentTrains;
     private ArrayList<String> stationNames;
     private ArrayList<String> stationCodes;
     private ArrayList<String> stationLatitudes;
     private ArrayList<String> stationLongitudes;
     private Polyline mPolyline;
     private LatLng currentLocation;
+    private Marker durationMarker;
+    private String stationDataUrl = "http://api.irishrail.ie/realtime/realtime.asmx/" +
+            "getStationDataByCodeXML_WithNumMins?NumMins=20&StationCode=";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
 
 
 
@@ -93,6 +101,9 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
         if (mPolyline != null) {
             mPolyline.remove();
         }
+        if(durationMarker != null){
+            durationMarker.remove();
+        }
 
         String url = getDirectionsUrl(currentLocation, marker.getPosition());
 
@@ -136,6 +147,20 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
                             lineOptions.color(Color.RED);
                         }
 
+                        BitmapDescriptor transparent = BitmapDescriptorFactory.fromResource(R.drawable.ic_action_name);
+                        MarkerOptions options = new MarkerOptions()
+                                .position(points.get(points.size()/2))
+                                .title(parser.duration)
+                                .icon(transparent)
+                                .anchor((float) 0.5, (float) 0.5); //puts the info window on the polyline
+
+                        durationMarker = mMap.addMarker(options);
+                        durationMarker.showInfoWindow();
+
+                        marker.setSnippet(parser.duration);
+                        marker.showInfoWindow();
+
+
                         // Drawing polyline in the Google Map for the i-th route
                         if(lineOptions != null) {
                             if(mPolyline != null){
@@ -156,6 +181,7 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
 
                     }
                 });
+
 
         ExampleRequestQueue.add(jsonObjectRequest);
 
