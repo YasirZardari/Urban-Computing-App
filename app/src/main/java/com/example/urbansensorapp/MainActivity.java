@@ -195,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
             float distanceInMeters = results[0];
 
 
-            if (distanceInMeters < 30000) {
+            if (distanceInMeters < 200000) {
                 stationCodes.add((String) singleTrain.get("Station Code"));
                 stationNames.add((String) singleTrain.get("Station Name"));
                 stationLatitudes.add((String) singleTrain.get("Station Latitude"));

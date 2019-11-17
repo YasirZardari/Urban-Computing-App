@@ -22,19 +22,38 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 
+import android.content.Intent;
+import android.os.AsyncTask;
+import android.os.Handler;
+import android.view.View;
 
+
+import android.graphics.Typeface;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Gravity;
 import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.graphics.Color;
 
 import org.json.JSONObject;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, OnMarkerClickListener {
 
@@ -44,9 +63,13 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
     private ArrayList<String> stationCodes;
     private ArrayList<String> stationLatitudes;
     private ArrayList<String> stationLongitudes;
+    private ArrayList<String> listOfTrains;
+    private ArrayList<String> listofTrainTimes;
     private Polyline mPolyline;
     private LatLng currentLocation;
+    private String newSnippet;
     private Marker durationMarker;
+    private String passUrl;
     private String stationDataUrl = "http://api.irishrail.ie/realtime/realtime.asmx/" +
             "getStationDataByCodeXML_WithNumMins?NumMins=20&StationCode=";
 
@@ -86,6 +109,36 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
         mMap.addMarker(new MarkerOptions().position(currentLocation).title("Current Location")
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
 
+        mMap.setInfoWindowAdapter(new GoogleMap.InfoWindowAdapter() {
+
+            @Override
+            public View getInfoWindow(Marker arg0) {
+                return null;
+            }
+
+            @Override
+            public View getInfoContents(Marker marker) {
+
+                LinearLayout info = new LinearLayout(MapsScreen.this);
+                info.setOrientation(LinearLayout.VERTICAL);
+
+                TextView title = new TextView(MapsScreen.this);
+                title.setTextColor(Color.BLACK);
+                title.setGravity(Gravity.CENTER);
+                title.setTypeface(null, Typeface.BOLD);
+                title.setText(marker.getTitle());
+
+                TextView snippet = new TextView(MapsScreen.this);
+                snippet.setTextColor(Color.GRAY);
+                snippet.setText(marker.getSnippet());
+
+                info.addView(title);
+                info.addView(snippet);
+
+                return info;
+            }
+        });
+
         for(int i = 0; i < stationCodes.size(); i++){
             mMap.addMarker(new MarkerOptions().position(new LatLng(Double.valueOf(
                     stationLatitudes.get(i)), Double.valueOf(stationLongitudes.get(i))))
@@ -104,6 +157,37 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
         if(durationMarker != null){
             durationMarker.remove();
         }
+
+
+        String markerStation = marker.getTitle();
+        String markerStationCode = stationCodes.get(stationNames.indexOf(markerStation));
+
+        passUrl = stationDataUrl + markerStationCode;
+
+//        Handler handler = new Handler();
+//        handler.postDelayed(new Runnable() {
+//            public void run() {
+//                // Actions to do after 5 seconds
+//                new OncomingTrains().execute(passUrl);
+//            }
+//        }, 5000);
+
+        new OncomingTrains().execute(passUrl);
+
+        try {
+            //set time in mili
+            Thread.sleep(1000);
+
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+        newSnippet = "";
+
+        for(int i = 0; i < listOfTrains.size(); i++){
+                newSnippet += listOfTrains.get(i) + ": " + listofTrainTimes.get(i) + " mins" + "\n";
+        }
+
+
 
         String url = getDirectionsUrl(currentLocation, marker.getPosition());
 
@@ -157,7 +241,8 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
                         durationMarker = mMap.addMarker(options);
                         durationMarker.showInfoWindow();
 
-                        marker.setSnippet(parser.duration);
+                        System.out.println(newSnippet + "loooooooooooooo");
+                        marker.setSnippet(parser.duration + " walking distance" + "\n" + newSnippet);
                         marker.showInfoWindow();
 
 
@@ -210,6 +295,67 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
         String url = "https://maps.googleapis.com/maps/api/directions/" + output + "?" + parameters;
 
         return url;
+    }
+
+    private class OncomingTrains extends AsyncTask<String, Integer, String> {
+
+        // This is run in a background thread
+        @Override
+        protected String doInBackground(String... url) {
+
+            listOfTrains = new ArrayList<>();
+            listofTrainTimes = new ArrayList<>();
+
+            try {
+
+                // Reading XML from Irish rail real time url
+                // Source for XML/Dom instructions: https://howtodoinjava.com/xml/read-xml-dom-parser-example/
+                DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+                DocumentBuilder db = dbf.newDocumentBuilder();
+                Document getAllCurrentTrainsDoc = db.parse(new URL(url[0]).openStream());
+
+                System.out.println(url[0]);
+                getAllCurrentTrainsDoc.getDocumentElement().normalize();
+
+                NodeList trainsList = getAllCurrentTrainsDoc.getElementsByTagName("objStationData");
+
+
+                for(int i = 0; i < trainsList.getLength(); i++){
+
+                    Node node = trainsList.item(i);
+                    Element eElement = (Element) node;
+
+                    String trainDestination = eElement.getElementsByTagName("Destination").item(0).getTextContent();
+                    String trainMins = eElement.getElementsByTagName("Duein").item(0).getTextContent();
+
+
+                    listOfTrains.add(trainDestination);
+                    listofTrainTimes.add(trainMins);
+                }
+
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            return "this string is passed to onPostExecute";
+        }
+
+        // This is called from background thread but runs in UI
+        @Override
+        protected void onProgressUpdate(Integer... values) {
+            super.onProgressUpdate(values);
+
+            // Do things like update the progress bar
+        }
+
+        // This runs in UI when background thread finishes
+        @Override
+        protected void onPostExecute(String result) {
+            super.onPostExecute(result);
+
+            // Do things like hide the progress bar or change a TextView
+        }
     }
 
 
