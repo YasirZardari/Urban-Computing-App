@@ -77,6 +77,8 @@ public class MainActivity extends AppCompatActivity {
     private String stationURL = "http://api.irishrail.ie/realtime/realtime.asmx/getStationDataByCodeXML?StationCode=perse&NumMins=30";
     private String stationList = "http://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML";
     private String currentTrainsURL = "http://api.irishrail.ie/realtime/realtime.asmx/getCurrentTrainsXML";
+    private String stationDataUrl = "http://api.irishrail.ie/realtime/realtime.asmx/" +
+            "getStationDataByCodeXML_WithNumMins?NumMins=20&StationCode=";
 
     private Button startButton;
     private TextView resultTextView;
@@ -176,10 +178,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void collectCurrentStations(Map<String,Object> trains) {
 
-        //iterate through each user, ignoring their UID
         for (Map.Entry<String, Object> entry : trains.entrySet()){
 
-            //Get user map
             Map singleTrain = (Map) entry.getValue();
 
             Double currentStationLat = Double.valueOf((String) singleTrain.get("Station Latitude"));
@@ -195,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
             float distanceInMeters = results[0];
 
 
-            if (distanceInMeters < 200000) {
+            if (distanceInMeters < 10000) {
                 stationCodes.add((String) singleTrain.get("Station Code"));
                 stationNames.add((String) singleTrain.get("Station Name"));
                 stationLatitudes.add((String) singleTrain.get("Station Latitude"));
@@ -278,7 +278,6 @@ public class MainActivity extends AppCompatActivity {
         longitudeTextView = findViewById((R.id.longitudeTextView));
 
         Button updateTrainButton = findViewById(R.id.UpdateTrainButton);
-        Button getTrainBtn = findViewById(R.id.GetTrainDataButton);
         Button openMapButton = findViewById(R.id.OpenMapButton);
 
 
@@ -322,15 +321,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        getTrainBtn.setOnClickListener(new View.OnClickListener(){
-            @Override
-            public void onClick(View view){
-                //DataFusion();
-                // Run async class which runs code getting info from open data source
-                //new StationInfo().execute(stationURL, stationList, currentTrainsURL);
-            }
-        });
-
+        // Open Map Screen
         openMapButton.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
@@ -351,8 +342,6 @@ public class MainActivity extends AppCompatActivity {
                 }, 3000);
 
 
-                // Run async class which runs code getting info from open data source
-                //new StationInfo().execute(stationURL, stationList, currentTrainsURL);
             }
         });
 

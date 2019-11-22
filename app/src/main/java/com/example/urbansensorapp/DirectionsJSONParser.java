@@ -11,6 +11,13 @@ import java.util.HashMap;
 import java.util.List;
 
 
+/*
+This parser was adpated from the following source:
+https://www.wingsquare.com/blog/drawing-driving-route-directions-between-two-locations-using-google-directions-in-google-map-android/
+This parses the json response based on the http request for a particular route. This returns a number
+of points which are used to draw the route on the map within the app
+ */
+
 public class DirectionsJSONParser {
     public String duration;
 

@@ -22,6 +22,7 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 
+
 import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Handler;
@@ -45,8 +46,6 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -58,7 +57,6 @@ import javax.xml.parsers.DocumentBuilderFactory;
 public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, OnMarkerClickListener {
 
     private GoogleMap mMap;
-    private ScrollView currentTrains;
     private ArrayList<String> stationNames;
     private ArrayList<String> stationCodes;
     private ArrayList<String> stationLatitudes;
@@ -77,9 +75,6 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-
-
-
         setContentView(R.layout.activity_google_map);
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
@@ -91,6 +86,7 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
         mMap = googleMap;
         mMap.setOnMarkerClickListener(this);
 
+        // Get current cooridnates
         double currentLat = Double.valueOf(getIntent().getStringExtra("Current Latitude"));
         double currentLong = Double.valueOf(getIntent().getStringExtra("Current Longitude"));
 
@@ -100,15 +96,15 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
         stationLongitudes = (ArrayList<String>) getIntent().getSerializableExtra("Station Longitudes");
 
         System.out.println(stationNames);
-        // Add a marker in Sydney, Australia, and move the camera.
-        LatLng sydney = new LatLng(-34, 151);
-        LatLng Karachi = new LatLng(24.9056, 67.0822);
-        LatLng dublin = new LatLng(24.9056, 67.0822);
+
         currentLocation = new LatLng(currentLat,currentLong);
 
+        // Add current location marker
         mMap.addMarker(new MarkerOptions().position(currentLocation).title("Current Location")
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
 
+        // Overwrite marker infowindow to make it bigger
+        // Adpated from https://stackoverflow.com/questions/13904651/android-google-maps-v2-how-to-add-marker-with-multiline-snippet
         mMap.setInfoWindowAdapter(new GoogleMap.InfoWindowAdapter() {
 
             @Override
@@ -139,6 +135,7 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
             }
         });
 
+        // Add marker for every station
         for(int i = 0; i < stationCodes.size(); i++){
             mMap.addMarker(new MarkerOptions().position(new LatLng(Double.valueOf(
                     stationLatitudes.get(i)), Double.valueOf(stationLongitudes.get(i))))
@@ -158,117 +155,113 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
             durationMarker.remove();
         }
 
+        if (!marker.getTitle().equals("Current Location")) {
 
-        String markerStation = marker.getTitle();
-        String markerStationCode = stationCodes.get(stationNames.indexOf(markerStation));
 
-        passUrl = stationDataUrl + markerStationCode;
+            String markerStation = marker.getTitle();
+            String markerStationCode = stationCodes.get(stationNames.indexOf(markerStation));
 
-//        Handler handler = new Handler();
-//        handler.postDelayed(new Runnable() {
-//            public void run() {
-//                // Actions to do after 5 seconds
-//                new OncomingTrains().execute(passUrl);
-//            }
-//        }, 5000);
+            passUrl = stationDataUrl + markerStationCode;
 
-        new OncomingTrains().execute(passUrl);
+            // Get the trains due at the station via request to Irish Rail API
+            new OncomingTrains().execute(passUrl);
 
-        try {
-            //set time in mili
-            Thread.sleep(1000);
+            try {
+                // Wait 1 second
+                Thread.sleep(1000);
 
-        }catch (Exception e){
-            e.printStackTrace();
-        }
-        newSnippet = "";
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            newSnippet = "";
 
-        for(int i = 0; i < listOfTrains.size(); i++){
+            // Populate snippet in marker window
+            for (int i = 0; i < listOfTrains.size(); i++) {
                 newSnippet += listOfTrains.get(i) + ": " + listofTrainTimes.get(i) + " mins" + "\n";
-        }
+            }
 
+            newSnippet = newSnippet.trim();
 
+            // Url for Directions API Request
+            String url = getDirectionsUrl(currentLocation, marker.getPosition());
 
-        String url = getDirectionsUrl(currentLocation, marker.getPosition());
+            RequestQueue ExampleRequestQueue = Volley.newRequestQueue(MapsScreen.this);
 
-        RequestQueue ExampleRequestQueue = Volley.newRequestQueue(MapsScreen.this);
+            // Json Request from Directions API based on marker clicked and current location
+            JsonObjectRequest jsonObjectRequest = new JsonObjectRequest
+                    (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
 
-        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest
-                (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
+                        @Override
+                        public void onResponse(JSONObject response) {
+                            Log.d("json", response.toString());
+                            DirectionsJSONParser parser = new DirectionsJSONParser();
+                            List<List<HashMap<String, String>>> routes = parser.parse(response);
 
-                    @Override
-                    public void onResponse(JSONObject response) {
-                        //textView.setText("Response: " + response.toString());
-                        Log.d("json",response.toString());
-                        DirectionsJSONParser parser = new DirectionsJSONParser();
-                        List<List<HashMap<String, String>>> routes = parser.parse(response);
+                            ArrayList<LatLng> points = null;
+                            PolylineOptions lineOptions = null;
 
-                        ArrayList<LatLng> points = null;
-                        PolylineOptions lineOptions = null;
+                            // Traversing through all the routes
+                            for (int i = 0; i < routes.size(); i++) {
+                                points = new ArrayList<LatLng>();
+                                lineOptions = new PolylineOptions();
 
-                        // Traversing through all the routes
-                        for(int i=0;i<routes.size();i++){
-                            points = new ArrayList<LatLng>();
-                            lineOptions = new PolylineOptions();
+                                // Fetching i-th route
+                                List<HashMap<String, String>> path = routes.get(i);
 
-                            // Fetching i-th route
-                            List<HashMap<String, String>> path = routes.get(i);
+                                // Fetching all the points in i-th route
+                                for (int j = 0; j < path.size(); j++) {
+                                    HashMap<String, String> point = path.get(j);
 
-                            // Fetching all the points in i-th route
-                            for(int j=0;j<path.size();j++){
-                                HashMap<String,String> point = path.get(j);
+                                    double lat = Double.parseDouble(point.get("lat"));
+                                    double lng = Double.parseDouble(point.get("lng"));
+                                    LatLng position = new LatLng(lat, lng);
 
-                                double lat = Double.parseDouble(point.get("lat"));
-                                double lng = Double.parseDouble(point.get("lng"));
-                                LatLng position = new LatLng(lat, lng);
+                                    points.add(position);
+                                }
 
-                                points.add(position);
+                                // Adding all the points in the route to LineOptions
+                                lineOptions.addAll(points);
+                                lineOptions.width(8);
+                                lineOptions.color(Color.RED);
                             }
 
-                            // Adding all the points in the route to LineOptions
-                            lineOptions.addAll(points);
-                            lineOptions.width(8);
-                            lineOptions.color(Color.RED);
+                            // Add marker to display duration (decided against this as only one marker
+                            // can be open at a time
+                            BitmapDescriptor transparent = BitmapDescriptorFactory.fromResource(R.drawable.ic_action_name);
+                            MarkerOptions options = new MarkerOptions()
+                                    .position(points.get(points.size() / 2))
+                                    .title(parser.duration)
+                                    .icon(transparent)
+                                    .anchor((float) 0.5, (float) 0.5); //puts the info window on the polyline
+
+                            durationMarker = mMap.addMarker(options);
+                            durationMarker.showInfoWindow();
+
+                            // Show marker window with distance and serving trains
+                            marker.setSnippet("Estimated Travel Time: " + parser.duration + "\n" + newSnippet);
+                            marker.showInfoWindow();
+
+
+                            // Drawing polyline in the Google Map for the i-th route
+                            if (lineOptions != null) {
+                                if (mPolyline != null) {
+                                    mPolyline.remove();
+                                }
+                                mPolyline = mMap.addPolyline(lineOptions);
+
+                            } else
+                                Toast.makeText(getApplicationContext(), "No route is found", Toast.LENGTH_LONG).show();
                         }
+                    }, new Response.ErrorListener() {
 
-                        BitmapDescriptor transparent = BitmapDescriptorFactory.fromResource(R.drawable.ic_action_name);
-                        MarkerOptions options = new MarkerOptions()
-                                .position(points.get(points.size()/2))
-                                .title(parser.duration)
-                                .icon(transparent)
-                                .anchor((float) 0.5, (float) 0.5); //puts the info window on the polyline
+                        @Override
+                        public void onErrorResponse(VolleyError error) {
+                            Log.d("json", "hey");
+                        }
+                    });
+            ExampleRequestQueue.add(jsonObjectRequest);
 
-                        durationMarker = mMap.addMarker(options);
-                        durationMarker.showInfoWindow();
-
-                        System.out.println(newSnippet + "loooooooooooooo");
-                        marker.setSnippet(parser.duration + " walking distance" + "\n" + newSnippet);
-                        marker.showInfoWindow();
-
-
-                        // Drawing polyline in the Google Map for the i-th route
-                        if(lineOptions != null) {
-                            if(mPolyline != null){
-                                mPolyline.remove();
-                            }
-                            mPolyline = mMap.addPolyline(lineOptions);
-
-                        }else
-                            Toast.makeText(getApplicationContext(),"No route is found", Toast.LENGTH_LONG).show();
-                    }
-                }, new Response.ErrorListener() {
-
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        Log.d("json","hey");
-
-                        // TODO: Handle error
-
-                    }
-                });
-
-
-        ExampleRequestQueue.add(jsonObjectRequest);
+        }
 
         // Return false to indicate that we have not consumed the event and that we wish
         // for the default behavior to occur (which is for the camera to move such that the
@@ -283,9 +276,11 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
         String str_origin = "origin=" + origin.latitude + "," + origin.longitude;
         // Destination of route
         String str_dest = "destination=" + dest.latitude + "," + dest.longitude;
+        // Method of travel
         String mode = "mode=walking";
+        // API Key
         String key = "key=AIzaSyAEuLTXaShSqD41B1X0V4dmMLP-RDFhZ44";
-        // Building the parameters to the web service
+        // Parameters for url to be requested through http
         String parameters = str_origin + "&" + str_dest + "&" + mode + "&" + key;
 
         // Output format
@@ -299,7 +294,6 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
 
     private class OncomingTrains extends AsyncTask<String, Integer, String> {
 
-        // This is run in a background thread
         @Override
         protected String doInBackground(String... url) {
 
@@ -341,20 +335,14 @@ public class MapsScreen extends FragmentActivity implements OnMapReadyCallback, 
             return "this string is passed to onPostExecute";
         }
 
-        // This is called from background thread but runs in UI
         @Override
         protected void onProgressUpdate(Integer... values) {
             super.onProgressUpdate(values);
-
-            // Do things like update the progress bar
         }
 
-        // This runs in UI when background thread finishes
         @Override
         protected void onPostExecute(String result) {
             super.onPostExecute(result);
-
-            // Do things like hide the progress bar or change a TextView
         }
     }
 
